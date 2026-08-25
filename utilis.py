@@ -4,6 +4,14 @@ import torch.nn as nn
 from torchvision import models
 import torch.nn.functional as F
 
+def set_seed(seed: int = 7):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 class CharbonnierLoss(nn.Module):
     def __init__(self, eps=1e-3):
         super(CharbonnierLoss, self).__init__()
