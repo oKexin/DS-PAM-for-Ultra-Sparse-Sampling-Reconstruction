@@ -162,9 +162,9 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         # features
         self.lrelu = nn.LeakyReLU(0.2, True)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.bn2 = nn.BatchNorm2d(128)
-        self.bn3 = nn.BatchNorm2d(256)
+        self.norm1 = nn.LayerNorm([64, patch_size // 2, patch_size // 2])
+        self.norm2 = nn.LayerNorm([128, patch_size // 4, patch_size // 4])
+        self.norm3 = nn.LayerNorm([256, patch_size // 8, patch_size // 8])
         self.patch_size = __patch_size__ // 8
         self.conv1 = nn.Conv2d(1, 64, 3, 2, 1)
         self.conv2 = nn.Conv2d(64, 128, 3, 2, 1)
@@ -174,9 +174,9 @@ class Discriminator(nn.Module):
         self.linear1 = nn.Linear(100, 1)
 
     def forward(self, x):
-        out = self.lrelu(self.bn1(self.conv1(x)))
-        out = self.lrelu(self.bn2(self.conv2(out)))
-        out = self.lrelu(self.bn3(self.conv3(out)))
+        out = self.lrelu(self.norm1(self.conv1(x)))
+        out = self.lrelu(self.norm2(self.conv2(out)))
+        out = self.lrelu(self.norm3(self.conv3(out)))
         out = out.view(out.size(0), -1)
         out = self.lrelu(self.linear0(out))
         out = self.linear1(out)
