@@ -162,9 +162,9 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         # features
         self.lrelu = nn.LeakyReLU(0.2, True)
-        self.norm1 = nn.LayerNorm([64, patch_size // 2, patch_size // 2])
-        self.norm2 = nn.LayerNorm([128, patch_size // 4, patch_size // 4])
-        self.norm3 = nn.LayerNorm([256, patch_size // 8, patch_size // 8])
+        self.norm1 = nn.LayerNorm([64, __patch_size__ // 2, __patch_size__ // 2])
+        self.norm2 = nn.LayerNorm([128, __patch_size__ // 4, __patch_size__ // 4])
+        self.norm3 = nn.LayerNorm([256, __patch_size__ // 8, __patch_size__ // 8])
         self.patch_size = __patch_size__ // 8
         self.conv1 = nn.Conv2d(1, 64, 3, 2, 1)
         self.conv2 = nn.Conv2d(64, 128, 3, 2, 1)
