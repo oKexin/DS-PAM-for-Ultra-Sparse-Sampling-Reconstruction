@@ -8,6 +8,7 @@ from model import MRDN, Discriminator
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 from utilis import CharbonnierLoss, SSIMLoss, VGGFeatureExtractor, set_seed
+from torchmetrics.image import StructuralSimilarityIndexMeasure
 import torch
 from torch.utils.data import DataLoader
 import warnings
@@ -16,6 +17,32 @@ import time
 import datetime
 import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore", category=UserWarning)
+
+def validate_ssim(generator, val_loader, device):
+    generator.eval()
+
+    ssim_metric = StructuralSimilarityIndexMeasure(
+        data_range=1.0
+    ).to(device)
+
+    with torch.no_grad():
+        for lor_data, enh_data, or_data in val_loader:
+            lor_data = lor_data.to(device)
+            enh_data = enh_data.to(device)
+            or_data = or_data.to(device)
+
+            prediction = generator(lor_data, enh_data)
+
+            # 防止预测值超出 SSIM 的设定范围
+            prediction = prediction.clamp(0.0, 1.0)
+            or_data = or_data.clamp(0.0, 1.0)
+
+            ssim_metric.update(prediction, or_data)
+
+    val_ssim = ssim_metric.compute().item()
+    ssim_metric.reset()
+
+    return val_ssim
 
 def gradient_penalty(gp_discriminator, real_samples, fake_samples, gp_device='cuda'):
     batch_size = real_samples.size(0)
@@ -55,7 +82,9 @@ if __name__ == '__main__':
                         help='path to generator weights (to continue training)')
     parser.add_argument('--discriminatorWeights', type=str, default='',
                         help="path to discriminator weights (to continue training)")
-    parser.add_argument('--datapath', type=str, default='dataset', help='folder of dataset')
+    parser.add_argument('--val_datapath', type=str, default='dataset/val', help='validation dataset path')
+    parser.add_argument('--train_datapath', type=str, default='dataset/train', help='folder of dataset')
+    parser.add_argument('--val_interval', type=int, default=500, help='validate every N epochs')
     parser.add_argument('--out', type=str, default='checkpoint', help='folder to output model checkpoints')
     opt = parser.parse_args()
     print(opt)
@@ -75,6 +104,9 @@ if __name__ == '__main__':
     enh_dir = f"AR_Enh_{opt.scale_factor}x/"
     train_dataset = ORARDataset(__data_dir__=opt.datapath, __enh_dir__=enh_dir, __scale_factor__=opt.scale_factor, __patch_size__=opt.patchSize, d_flag=True)
     train_loader = DataLoader(train_dataset,batch_size=opt.batchSize, shuffle=True, num_workers=8)
+
+    val_dataset = ORARDataset(__data_dir__=opt.val_datapath, __enh_dir__=enh_dir, __scale_factor__=opt.scale_factor, __patch_size__=opt.patchSize,d_flag=False, __full__=True)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=8)
     len_train = len(train_loader)
 
     # load model
@@ -126,6 +158,16 @@ if __name__ == '__main__':
     l_fidelity_w = 1.0
     vgg_extractor = VGGFeatureExtractor(layer_index=7).to(device)
     generator_losses = []
+    best_val_ssim = float('-inf')
+    best_epoch = -1
+    best_generator_path = os.path.join(
+        opt.out,
+        'generator_best_ssim.pth'
+    )
+    best_discriminator_path = os.path.join(
+        opt.out,
+        'discriminator_best_ssim.pth'
+    )
     print('Training Start')
     for epoch in range(opt.StartEpochs, opt.nEpochs):
         epoch_start_time = time.time()
@@ -182,9 +224,45 @@ if __name__ == '__main__':
         writer.add_scalar('Train/Mean_adversarial_loss', mean_adversarial_loss, epoch + 1)
         writer.add_scalar('Train/Mean_feat_loss', mean_feat_loss, epoch + 1)
         writer.add_scalar('Train/Mean_discriminator_loss', mean_discriminator_loss, epoch + 1)
-        if ((epoch + 1) % 1000 == 0):
-            torch.save(generator.state_dict(), f'{opt.out}/generator_epoch_{epoch + 1}.pth')
-            torch.save(discriminator.state_dict(), f'{opt.out}/discriminator_epoch_{epoch + 1}.pth')
+
+        current_epoch = epoch + 1
+
+        if current_epoch % opt.val_interval == 0:
+            val_ssim = validate_ssim(
+                generator,
+                val_loader,
+                device
+            )
+
+            print(
+                f'Epoch {current_epoch}: '
+                f'Validation SSIM = {val_ssim:.6f}'
+            )
+
+            writer.add_scalar(
+                'Validation/SSIM',
+                val_ssim,
+                current_epoch
+            )
+
+            if val_ssim > best_val_ssim:
+                best_val_ssim = val_ssim
+                best_epoch = current_epoch
+
+                torch.save(
+                    generator.state_dict(),
+                    best_generator_path
+                )
+
+                torch.save(
+                    discriminator.state_dict(),
+                    best_discriminator_path
+                )
+
+                print(
+                    f'New best model saved at epoch {current_epoch}, '
+                    f'SSIM = {best_val_ssim:.6f}'
+                )
     writer.close()
 
 

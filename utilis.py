@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 from torchvision import models
 import torch.nn.functional as F
+import numpy as np
 
 def set_seed(seed: int = 7):
-    random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)

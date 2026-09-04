@@ -60,7 +60,8 @@ def add_gaussian_noise(patch, sigma):
     return noisy_patch
 
 class ORARDataset(Dataset):
-    def __init__(self, __data_dir__, __enh_dir__, __scale_factor__, __patch_size__, d_flag):
+    def __init__(self, __data_dir__, __enh_dir__, __scale_factor__,
+                 __patch_size__, d_flag, __full__=False):
         self.dir = __data_dir__
         self.enh_dir = __enh_dir__
         self.scale_factor = __scale_factor__
@@ -70,6 +71,8 @@ class ORARDataset(Dataset):
             transforms.ToTensor()
         ])
         self.downsample_flag = d_flag
+        # Training uses random patches; validation can request the complete image.
+        self.full_resolution = __full__
         self.file_count = self._count_valid_files()
 
     def _count_valid_files(self):
@@ -88,6 +91,43 @@ class ORARDataset(Dataset):
 
         or_frame = cv2.imread(f"{self.dir}/{idx + 1}_OR.png", 0)
         ar_enhance = cv2.imread(f"{self.enh_dir}/{idx + 1}_Enh.png", 0)
+
+        if or_frame is None or ar_enhance is None:
+            raise FileNotFoundError(
+                f"Could not read sample {idx + 1}: "
+                f"{self.dir}/{idx + 1}_OR.png or "
+                f"{self.enh_dir}/{idx + 1}_Enh.png"
+            )
+
+        # Validation path: do not crop, augment, or add noise. Return the
+        # complete image at its native HR/LR resolution.
+        if self.full_resolution:
+            h, w = or_frame.shape
+            if h % self.scale_factor != 0 or w % self.scale_factor != 0:
+                raise ValueError(
+                    f"Image {idx + 1} has size {(h, w)}, which is not divisible "
+                    f"by scale_factor={self.scale_factor}."
+                )
+
+            lr_h, lr_w = h // self.scale_factor, w // self.scale_factor
+            if ar_enhance.shape[0] < lr_h or ar_enhance.shape[1] < lr_w:
+                raise ValueError(
+                    f"Enhanced image {idx + 1} is too small: "
+                    f"{ar_enhance.shape}; expected at least {(lr_h, lr_w)}."
+                )
+
+            or_full = normalized(or_frame).astype(np.float32)
+            lor_full = dowmsampling(or_full, self.scale_factor, True)
+            lor_full = normalized(lor_full).astype(np.float32)
+            enh_full = ar_enhance[:lr_h, :lr_w]
+            enh_full = normalized(enh_full).astype(np.float32)
+
+            return (
+                self.transform(lor_full),
+                self.transform(enh_full),
+                self.transform(or_full),
+            )
+
         h, w = or_frame.shape
 
         while True:
