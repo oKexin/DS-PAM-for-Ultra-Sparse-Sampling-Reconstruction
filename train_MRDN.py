@@ -7,7 +7,7 @@ from load_dataset import ORARDataset
 from model import MRDN, Discriminator
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from utilis import CharbonnierLoss, SSIMLoss, VGGFeatureExtractor
+from utilis import CharbonnierLoss, SSIMLoss, VGGFeatureExtractor, set_seed
 import torch
 from torch.utils.data import DataLoader
 import warnings
@@ -64,6 +64,7 @@ if __name__ == '__main__':
     except OSError:
         pass
     cudnn.benchmark = True
+    set_seed(7)
     # initial TensorBoard
     timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     experiment_name = f"exp_{timestamp}"
